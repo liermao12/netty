@@ -70,12 +70,18 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
         //参数一：内部线程数量 0
         //参数二：执行器 null
         //参数三：选择器提供器，通过这个可以获取到jdk层面的selector实例。
-        //参数四：选择器工作策略
+        //参数四：选择器工作策略 DefaultSelectStrategy
         this(nThreads, threadFactory, selectorProvider, DefaultSelectStrategyFactory.INSTANCE);
     }
 
+
     public NioEventLoopGroup(int nThreads, ThreadFactory threadFactory,
         final SelectorProvider selectorProvider, final SelectStrategyFactory selectStrategyFactory) {
+        //参数一：内部线程数量 0
+        //参数二：执行器 null
+        //参数三：选择器提供器，通过这个可以获取到jdk层面的selector实例。
+        //参数四：选择器工作策略 DefaultSelectStrategy
+        //参数五：线程池拒绝策略
         super(nThreads, threadFactory, selectorProvider, selectStrategyFactory, RejectedExecutionHandlers.reject());
     }
 
