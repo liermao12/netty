@@ -54,6 +54,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     //参数四：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
     //参数五：线程池拒绝策略 args[2]
     protected MultithreadEventLoopGroup(int nThreads, Executor executor, Object... args) {
+        //假设当前平台为 8 cpu 平台，此时 DEFAULT_EVENT_LOOP_THREADS == 16
         super(nThreads == 0 ? DEFAULT_EVENT_LOOP_THREADS : nThreads, executor, args);
     }
 

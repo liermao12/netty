@@ -54,15 +54,18 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param executor          the Executor to use, or {@code null} if the default should be used.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
-    //参数一：内部线程数量 0
+    //参数一：内部线程数量 ，假设当前平台为 8 cpu 平台，此时 DEFAULT_EVENT_LOOP_THREADS == 16
     //参数二：执行器 null
     //参数三：选择器提供器，通过这个可以获取到jdk层面的selector实例。 args[0] == selectorProvider
     //参数四：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
     //参数五：线程池拒绝策略 args[2]
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
-        //参数一：内部线程数量 0
+        //参数一：内部线程数量 ，假设当前平台为 8 cpu 平台，此时 DEFAULT_EVENT_LOOP_THREADS == 16
         //参数二：执行器 null
-        //参数三：
+        //参数三：ChooserFactory 用来生成Chooser实例。
+        //参数四：选择器提供器，通过这个可以获取到jdk层面的selector实例。 args[0] == selectorProvider
+        //参数五：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
+        //参数六：线程池拒绝策略 args[2]
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
 
@@ -74,6 +77,12 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param chooserFactory    the {@link EventExecutorChooserFactory} to use.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
+    //参数一：内部线程数量 ，假设当前平台为 8 cpu 平台，此时 DEFAULT_EVENT_LOOP_THREADS == 16
+    //参数二：执行器 null
+    //参数三：ChooserFactory 用来生成Chooser实例。
+    //参数四：选择器提供器，通过这个可以获取到jdk层面的selector实例。 args[0] == selectorProvider
+    //参数五：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
+    //参数六：线程池拒绝策略 args[2]
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
         if (nThreads <= 0) {
@@ -81,9 +90,13 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         }
 
         if (executor == null) {
+            // 真正生产出来执行任务的线程的作用，executor
+            // newDefaultThreadFactory() 创建了一个线程工厂，线程工厂内具有prefix字段，命名规则 className + poolId
+            // 通过这个线程工厂 创建出来的 线程实例，线程名称为 className + poolId + 线程id，并且线程实例类型为: FastThreadLocalThread
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
+        // 这里假设平台是 8 核心 ，这里会创建 长度是 16 的 EventExecutor 数组
         children = new EventExecutor[nThreads];
 
         for (int i = 0; i < nThreads; i ++) {
