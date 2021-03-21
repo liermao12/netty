@@ -54,7 +54,15 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param executor          the Executor to use, or {@code null} if the default should be used.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
+    //参数一：内部线程数量 0
+    //参数二：执行器 null
+    //参数三：选择器提供器，通过这个可以获取到jdk层面的selector实例。 args[0] == selectorProvider
+    //参数四：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
+    //参数五：线程池拒绝策略 args[2]
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        //参数一：内部线程数量 0
+        //参数二：执行器 null
+        //参数三：
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
 
