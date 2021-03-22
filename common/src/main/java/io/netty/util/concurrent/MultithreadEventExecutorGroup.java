@@ -102,6 +102,13 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // newChild(...) 都会返回一个 NioEventLoop 实例
+
+                // executor: ThreadPerTaskExecutor实例，这个实例里面包含着一个 ThreadFactory实例，PerTaskExecutor通过内部线程工厂可以制造出来线程，
+                // 并且线程名称为 className + poolId + 线程id,并且线程实例类型为：FastThreadLocalThread
+                //参数一：选择器提供器，通过这个可以获取到jdk层面的selector实例。 args[0] == selectorProvider
+                //参数二：选择器工作策略 DefaultSelectStrategy   args[1] == selectStrategy
+                //参数三：线程池拒绝策略 args[2]
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
@@ -129,8 +136,11 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 通过 ChooserFactory 根据当前children数量 构建一个合适的 chooser 实例。
+        // 后面，外部资源想要 获取 或者 注册... 到 NioEventLoop，都是通过chooser 来分配NioEventLoop的。
         chooser = chooserFactory.newChooser(children);
 
+        // 结束监听
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
