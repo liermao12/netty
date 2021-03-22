@@ -241,8 +241,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     /**
      * Create a new {@link Channel} and bind it.
+     * @param inetPort 服务端 要绑定的端口号。
      */
     public ChannelFuture bind(int inetPort) {
+        // new InetSocketAddress(inetPort) 封装了一下..
         return bind(new InetSocketAddress(inetPort));
     }
 
@@ -265,6 +267,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     public ChannelFuture bind(SocketAddress localAddress) {
         validate();
+
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 

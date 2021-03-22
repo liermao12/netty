@@ -53,11 +53,19 @@ public final class EchoServer {
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         final EchoServerHandler serverHandler = new EchoServerHandler();
         try {
+            // 服务端启动辅助类..
             ServerBootstrap b = new ServerBootstrap();
+
+            // bossGroup 是咱们的 ServerChannel使用
+            // workerGroup 是基于当前Server产生的 客户端Channel 使用。
             b.group(bossGroup, workerGroup)
+                // 设置服务端 Channel 类型。 内部会创建一个 反射工厂，反射工厂提供了一个newInstance方法用于创建 Channel实例。
              .channel(NioServerSocketChannel.class)
+                 // 保存一些Server端自定义选项。
              .option(ChannelOption.SO_BACKLOG, 100)
+                  // 配置用户自定义的Server端 pipeline 处理器。 后续创建出来 NioServerChannel实例后，会将用户自定义的Handler加到该pipeline中
              .handler(new LoggingHandler(LogLevel.INFO))
+                  // 配置服务端上连接进来的客户端，客户端Channel内部的Pipeline初始信息。
              .childHandler(new ChannelInitializer<SocketChannel>() {
                  @Override
                  public void initChannel(SocketChannel ch) throws Exception {
