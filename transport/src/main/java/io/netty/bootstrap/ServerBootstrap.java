@@ -132,13 +132,35 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         setChannelOptions(channel, newOptionsArray(), logger);
         setAttributes(channel, newAttributesArray());
 
+        // 获取到服务端的 Pipeline 管道
         ChannelPipeline p = channel.pipeline();
 
+        // 其实这个就是 workerGroup
         final EventLoopGroup currentChildGroup = childGroup;
+        // 这个就是：
+        /**
+         * childHandler(new ChannelInitializer<SocketChannel>() {
+         *                  @Override
+         *                  public void initChannel(SocketChannel ch) throws Exception {
+         *                      ChannelPipeline p = ch.pipeline();
+         *                      if (sslCtx != null) {
+         *                          p.addLast(sslCtx.newHandler(ch.alloc()));
+         *                      }
+         *                      //p.addLast(new LoggingHandler(LogLevel.INFO));
+         *                      p.addLast(serverHandler);
+         *                  }
+         *              });
+         */
         final ChannelHandler currentChildHandler = childHandler;
+
+        // 客户端Socket选项信息
         final Entry<ChannelOption<?>, Object>[] currentChildOptions = newOptionsArray(childOptions);
+        // Netty的Channel都是实现了 AttributeMap接口的，可以在 启动类 内配置一些 自定义数据，创建出来的 Channel实例，就包含这些数据了。
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
 
+        // ChannelInitializer 它本身不是一个 Handler，只是通过 适配器 实现了 Handler接口。
+        // 它存在的意义，就是为了 延迟初始化 Pipeline ，什么时候初始化呢？ 当 Pipeline 上的Channel 激活以后，真正的添加 handler 逻辑才要执行。
+        // 目前知道咱们的 NioServerSocketChannel 内部的Pipleline 长这个样子： head <-- CI <-- tail,后面合适的时候，CI 会做解压缩 操作，将内部真正的Handler添加到 pipeline 中，并且 将自己 移除出该 Pipeline。
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {

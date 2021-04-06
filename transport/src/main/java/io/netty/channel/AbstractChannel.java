@@ -469,7 +469,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
+            // 防止channel重复注册..
             if (isRegistered()) {
+                // 1. 设置promise结果为 失败..
+                // 2. 回调 监听者，执行失败的逻辑..
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
@@ -479,12 +482,21 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // AbstractChannel.this 获取到 Channel作用域，这个Channel就是unsafe的外层对象。
+            // AbstractChannel.this  => NioServerSocketChannel对象..
+            // 绑定个关系..后续Channel上的 事件 或者 任务 都会依赖当前EventLoop 线程去处理
             AbstractChannel.this.eventLoop = eventLoop;
 
+
+            // eventLoop.inEventLoop() 判断当前线程 是不是 当前eventLoop 自己 这个线程..
+            // 这样设计的目的，就是为了 线程安全
+
+            // 因为咱们 channel 支持 unregistor ...
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
                 try {
+                    // 将注册的任务，提交到了 eventLoop 工作队列内了...带着promise过去的...异步任务1 名称：register0
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
@@ -502,6 +514,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        // 这个方法 一定是 当前Channel关联的EventLoop线程执行
+        // 参数： promise，表示注册结果的，外部可以向它 注册监听者...来完成 注册 后的逻辑..
         private void register0(ChannelPromise promise) {
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
@@ -510,12 +524,17 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+
+                //注册..
                 doRegister();
+
                 neverRegistered = false;
+                // 表示当前Channel已经注册到 多路复用器了..
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);

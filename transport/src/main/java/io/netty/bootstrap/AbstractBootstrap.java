@@ -274,13 +274,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     // 真正完成 bind 工作的方法，非常的关键。
     private ChannelFuture doBind(final SocketAddress localAddress) {
 
+        // regFuture 它就是注册相关的promise对象 它关联的异步任务是 registor0 这个任务
+        // registor0 这个任务 咱们把它 扔到 当前Channel 相关的 eventLoop 工作队列了..
         final ChannelFuture regFuture = initAndRegister();
-
+        // nioServerSocketChannel 对象
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
+        // 当registor0 已经被执行完后，regFuture 状态就是 done 状态。
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -289,6 +292,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
+            // 这里向 registor0 任务相关的 promise 对象添加一个 回调对象。回调对象去处理 registor0 成功或失败的事情..
+            // 监听者回调线程 是 eventLoop 线程..不是当前主线程..
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
@@ -306,6 +311,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                     }
                 }
             });
+
+            //主线程返回一个与 bind 操作相关的 promise对象...
             return promise;
         }
     }
@@ -323,7 +330,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // 4.保存了感兴趣的事件类型为：Accept
             // 5.创建出来NioServerSocketChannel Unsafe对象，类型是 NioMessageUnsafe
             channel = channelFactory.newChannel();
-
+            // 记住 最主要的：这一步会给当前服务端 Channel 的Pipeline 添加一个CI。
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -336,6 +343,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // config() 返回什么呢？ServerBootstrapConfig(serverBootstrap)
+        // ServerBootstrapConfig.group() 返回的就是 boss 组。 boss 它是 NioEventLoopGroup。
+        // NioEventLoopGroup.register(channel)
+
+        // regFuture 它就是注册相关的promise对象！！
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
