@@ -70,8 +70,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
+        // 每个Channel实例 创建一个 ChannelId对象。
         id = newId();
+        // 服务端时：NioServerSocketChannel，它的Unsafe实例是谁？NioMessageUnsafe
         unsafe = newUnsafe();
+        // 创建出来当前Channel内部的 Pipeline 管道。
+        // 创建出来的这个Pipeline 内部有两个默认的 处理器，分别是 HeadContext 和 TailContext
+        // head<--->tail
         pipeline = newChannelPipeline();
     }
 
