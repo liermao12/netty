@@ -594,7 +594,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             // 在这一步，还未完成绑定，所以是 false
             boolean wasActive = isActive();
             try {
-                // 获取到JDK层面的 ServerSocketCahnnel，并且使用它完成真正的绑定工作。
+                // 获取到JDK层面的 ServerSocketChannel，并且使用它完成真正的绑定工作。
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
