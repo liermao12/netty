@@ -534,13 +534,24 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
-
+                // 讲了很多...自己再去看看.. 会向当前EventLoop 线程队列 提交 任务2
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                // 这一步会去回调  注册相关的 promise 上注册的 那些 Listener ，比如 "主线程" 在 regFuture 上 注册的 监听者。
+                // 回调到 doBind0 方法时，会向EventLoop线程队列 提交 任务3
                 safeSetSuccess(promise);
+
+                // 向当前Channel的 Pipeline 发起注册完成事件，关注的Handler 可以 做一些 事情。
                 pipeline.fireChannelRegistered();
+
+
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+
+                // Channel->NioServerSocketChannel
+                // 咱们在这一步的时候，完成绑定了吗？ 绑定操作 一定是 当前 EventLoop线程去做的，当前EventLoop线程 在干嘛？
+                // 这一步的时候，绑定一定是 没完成的！
+                // 这一步 isActive() 是不成立的。
                 if (isActive()) {
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
@@ -580,9 +591,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "is not bound to a wildcard address; binding to a non-wildcard " +
                         "address (" + localAddress + ") anyway as requested.");
             }
-
+            // 在这一步，还未完成绑定，所以是 false
             boolean wasActive = isActive();
             try {
+                // 获取到JDK层面的 ServerSocketCahnnel，并且使用它完成真正的绑定工作。
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -590,15 +602,24 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+
+            // 条件一： !wasActive => true
+            // 条件二： 因为上面已经完成绑定，所以这里也是true
             if (!wasActive && isActive()) {
+                // 这里，再次向 当前Channel#EventLoop 工作队列 提交了 任务，任务4
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        // headContext 会响应 active 事件，如何处理的呢？
+                        // 再次向当前Channel的pipeline 发起 read 事件。
+                        // read事件，就会修改Channel 在 selector 上注册的 感兴趣的 事件，为accept 。 ？？？？
                         pipeline.fireChannelActive();
                     }
                 });
             }
 
+            // promise 这个表示的是绑定结果，谁在等待绑定结果呢？
+            // 咱们的启动线程，在该promise上执行的 wait 操作，所以，这一步 绑定完成之后，会将其唤醒。
             safeSetSuccess(promise);
         }
 
