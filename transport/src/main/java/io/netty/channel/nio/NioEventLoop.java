@@ -113,6 +113,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      */
     private Selector selector;
     private Selector unwrappedSelector;
+    // 表示当前NioEventLoop的 selector 就绪事件 集合。
     private SelectedSelectionKeySet selectedKeys;
 
     private final SelectorProvider provider;
@@ -528,27 +529,35 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // 条件成立： 说明 IO优先，IO处理完之后，再处理本地任务。
                 if (ioRatio == 100) {
                     try {
+                        // 条件成立：当前NioEventLoop的selector上 有就绪的 ch 事件。
                         if (strategy > 0) {
+                            // 处理IO事件的 方法入口。
                             processSelectedKeys();
                         }
                     } finally {
                         // Ensure we always run tasks.
+                        // 执行本地任务队列内的任务。
                         ranTasks = runAllTasks();
                     }
                 }
                 // 条件成立：当前 NioEventLoop 内的 selector 上有就绪的事件。
                 else if (strategy > 0) {
+                    // IO 事件处理的开始时间。
                     final long ioStartTime = System.nanoTime();
                     try {
+                        // 处理 IO事件...
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
+                        // IO 事件处理 总耗时
                         final long ioTime = System.nanoTime() - ioStartTime;
+                        // ioTime * (100 - ioRatio) / ioRatio 根据 IO 处理事件，计算出 一个 执行本地队列任务的 最大 时间。
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 }
                 // 条件成立：当前 NioEventLoop 内的 selector 上没有就绪的事件，只处理本地任务就可以了。
                 else {
+                    // 执行最少数量的 本地任务.. 最多 最多 执行 64 个任务。
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 
@@ -557,6 +566,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         logger.debug("Selector.select() returned prematurely {} times in a row for Selector {}.",
                                 selectCnt - 1, selector);
                     }
+                    // 正常 NioEventLoop 线程 从selector 多路复用器上 唤醒后 工作是因为 有io事件。
+                    // 会把 selectCnt 置为0.
                     selectCnt = 0;
                 } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
                     selectCnt = 0;
@@ -630,6 +641,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeys() {
         if (selectedKeys != null) {
+
             processSelectedKeysOptimized();
         } else {
             processSelectedKeysPlain(selector.selectedKeys());
@@ -695,15 +707,22 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKeysOptimized() {
+        // selectedKeys 就绪事件集合。
         for (int i = 0; i < selectedKeys.size; ++i) {
+            // SelectionKey 表示 就绪事件。
             final SelectionKey k = selectedKeys.keys[i];
+
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
 
+            // 附件。 这里会拿到 "注册" 阶段，咱们向 selector 提供的 Channel 对象。
+            // channel 可能是 NioServerSocketChannel，也可能是 NioSocketChannel。
             final Object a = k.attachment();
 
+            // 大部分情况 都会 执行这个分支
             if (a instanceof AbstractNioChannel) {
+                // 处理IO事件..
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
                 @SuppressWarnings("unchecked")
@@ -723,6 +742,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+        // 1. NioServerSocketChannel -> NioMessageUnsafe
+        // 2. NioSocketChannel -> NioByteUnsafe
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         if (!k.isValid()) {
             final EventLoop eventLoop;
@@ -767,7 +788,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
+            // (readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 正常逻辑，channel 有可读 或者 accept 事件。
+            // readyOps == 0 ？ 它是什么情况呢？ 这里会通过 unsafe.read() 再次将 当前Channel 的事件列表设置为 监听读 。
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+                // 1. server -> 创建客户端socketChannel...
+                // 2. socketChannel -> NioByteUnsafe.read()  会读取缓冲区的数据，并且将数据 响应到 pipeline 中...
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {
