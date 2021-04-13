@@ -72,8 +72,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         this.parent = parent;
         // 每个Channel实例 创建一个 ChannelId对象。
         id = newId();
-        // 服务端时：NioServerSocketChannel，它的Unsafe实例是谁？NioMessageUnsafe
+        // 当类型是：NioServerSocketChannel，它的Unsafe实例是谁？NioMessageUnsafe
+        // 当类型是：NioSocketChannel,它的Unsafe实例是谁？NioByteUnsafe
         unsafe = newUnsafe();
+
         // 创建出来当前Channel内部的 Pipeline 管道。
         // 创建出来的这个Pipeline 内部有两个默认的 处理器，分别是 HeadContext 和 TailContext
         // head<--->tail
@@ -553,6 +555,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // 这一步的时候，绑定一定是 没完成的！
                 // 这一步 isActive() 是不成立的。
                 if (isActive()) {
+                    // 客户端 会进来这里！ 服务端Channel 不会走这里！
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
