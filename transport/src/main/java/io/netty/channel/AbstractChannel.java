@@ -435,6 +435,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected abstract class AbstractUnsafe implements Unsafe {
 
+        // 每个channel 都有一个属于它自己的 unsafe，每个unsafe 都有一个属于它自己的 outboundBuffer。
         private volatile ChannelOutboundBuffer outboundBuffer = new ChannelOutboundBuffer(AbstractChannel.this);
         private RecvByteBufAllocator.Handle recvHandle;
         private boolean inFlush0;
@@ -913,11 +914,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        //参数1：msg,一般都是ByteBuf对象，当然有其它情况 比如 FileRegion..不考虑这种情况..
+        //参数2：promise，业务如果关注 本次 写操作是否成功 或者 失败，可以手动提交一个 跟 msg 相关的 promise, promise 内可以注册一些监听者，用于处理结果。
         @Override
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+
             if (outboundBuffer == null) {
                 try {
                     // release message now to prevent resource-leak
@@ -932,10 +936,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 }
                 return;
             }
-
+            // 表示 msg 数据大小
             int size;
             try {
+                // msg 一般都是 ByteBuf 对象，ByteBuf 对象根据内存 归属 分为 heap 和 direct
+                // 如果 ByteBuf 类型是 heap 类型的话，这里会将 它转换为 direct 类型。
                 msg = filterOutboundMessage(msg);
+
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;

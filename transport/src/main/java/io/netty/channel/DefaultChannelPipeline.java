@@ -1404,8 +1404,18 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.beginRead();
         }
 
+        /**
+         *
+         * 参数1：ctx，当前HeadContext对象自身
+         * 参数2：msg,一般都是ByteBuf对象，当然有其它情况 比如 FileRegion..不考虑这种情况..
+         * 参数3：promise，业务如果关注 本次 写操作是否成功 或者 失败，可以手动提交一个 跟 msg 相关的 promise, promise 内可以注册一些监听者，用于处理结果。
+         */
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+            // unsafe 对象： NioSocketChannelUnsafe
+
+            //参数1：msg,一般都是ByteBuf对象，当然有其它情况 比如 FileRegion..不考虑这种情况..
+            //参数2：promise，业务如果关注 本次 写操作是否成功 或者 失败，可以手动提交一个 跟 msg 相关的 promise, promise 内可以注册一些监听者，用于处理结果。
             unsafe.write(msg, promise);
         }
 
