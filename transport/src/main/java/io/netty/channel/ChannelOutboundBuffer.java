@@ -71,17 +71,55 @@ public final class ChannelOutboundBuffer {
         }
     };
 
+    // 表示当前出站缓冲区归属Channel
     private final Channel channel;
 
+
+    /**
+     * 1. unflushedEntry != null && flushedEntry == null, 此时出站缓冲区 处于 数据入站阶段
+     * 2. unflushedEntry == null && flushedEntry !=null, 此时出站缓冲区 处于 数据出站阶段, 调用了 addFlush 方法之后，会将 flushedEntry 指向 原
+     * unflushedEntry 的值，并且计算出来一个待刷新的节点数量 flushed
+     * --------------------------------------------------------------------------------
+     *
+     * 3. UnflushedEntry !=null && flushedEntry !=null , 这种情况比较极端...
+     * 假设 业务层面 不停的 使用 ctx.write(msg),msg最终都会调用unsafe.write(msg ...) => channelOutboundBuffer.addMessage(msg)
+     * e1 -> e2 -> e3 -> e4 -> e5 -> .... -> eN
+     * flushedEntry -> null
+     * unflushedEntry -> e1
+     * tailEntry -> eN
+     *
+     * 业务handler接下来，调用 ctx.flush()，最终会触发 unsafe.flush() ,
+     * unsafe.flush(){
+     *     1. channelOutboundBuffer.addFlush() 这个方法会将 flushedEntry 指向 unflushedEntry 的元素， flushedEntry -> e1
+     *     2. channelOutboundBuffer.nioBuffers(...) 这个方法会返回 byteBuffer[] 数组 供下面逻辑使用
+     *     3. 遍历byteBuffer数组，调用 JDK Channel.write(buffer),该方法会返回 真正写入 socket写缓冲区的字节数量，结果为res。
+     *     4. 根据 res 移除 出站缓冲区 内 对应的entry.
+     * }
+     * socket写缓冲区 有可能被写满，假设写到 byteBuffer[3]的时候，socket写缓冲区满了...那么此时 nioEventLoop 再重试去写 也没啥用，需要
+     * 怎么办？ 设置多路复用器 当前ch 关注 OP_WRITE 事件，当底层socket写缓冲区 有空闲空间时，多路复用器 会再次唤醒 NioEventLoop 线程 去处理...
+     *
+     * 这种情况下，flushedEntry -> e4
+     *
+     * 业务handle再次 使用 ctx.write(msg) ，那么 unflushedEntry 就指向 当前 msg 对应的 Entry 了.
+     *
+     * e4 -> e5 -> ... -> eN
+     * flushedEntry -> e4
+     * unflushedEntry -> eN+1
+     * tailEntry -> eN+1
+     */
     // Entry(flushedEntry) --> ... Entry(unflushedEntry) --> ... Entry(tailEntry)
     //
     // The Entry that is the first in the linked-list structure that was flushed
+    // 表示待刷新的第一个节点
     private Entry flushedEntry;
     // The Entry which is the first unflushed in the linked-list structure
+    // 表示未刷新的第一个节点
     private Entry unflushedEntry;
     // The Entry which represents the tail of the buffer
+    // 表示末尾节点
     private Entry tailEntry;
     // The number of flushed entries that are not written yet
+    // 表示剩余多少entry待刷新到ch，addFlush方法 会计算这个值，计算方式：从flushedEntry 一直遍历到 tail，计算出有多少元素。
     private int flushed;
 
     private int nioBufferCount;
@@ -93,12 +131,15 @@ public final class ChannelOutboundBuffer {
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 
     @SuppressWarnings("UnusedDeclaration")
+    // 出站缓冲区 总共有多少字节量，注意：包含entry自身字段占用的空间。 entry->msg + entry.field
     private volatile long totalPendingSize;
 
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "unwritable");
 
     @SuppressWarnings("UnusedDeclaration")
+    // 表示出站缓冲区 是否可写， 0 表示可写 ， 1 表示不可写。
+    // 如果业务层面 不检查 unwritable 状态，不受限制。
     private volatile int unwritable;
 
     private volatile Runnable fireChannelWritabilityChangedTask;
