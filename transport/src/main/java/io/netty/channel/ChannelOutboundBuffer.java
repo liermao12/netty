@@ -127,6 +127,7 @@ public final class ChannelOutboundBuffer {
 
     private boolean inFail;
 
+    // 内部采用CAS方式 更新 管理的 totalPendingSize
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 
@@ -152,8 +153,20 @@ public final class ChannelOutboundBuffer {
      * Add given message to this {@link ChannelOutboundBuffer}. The given {@link ChannelPromise} will be notified once
      * the message was written.
      */
+    // 将ByteBuf数据 加入到 出站缓冲区内。
+    // 参数1：msg  ByteBuf对象，并且这个ByteBuf管理的内存 归属 是 direct
+    // 参数2：size 数据量大小
+    // 参数3：promise，业务如果关注 本次 写操作是否成功 或者 失败，可以手动提交一个 跟 msg 相关的 promise, promise 内可以注册一些监听者，用于处理结果。
     public void addMessage(Object msg, int size, ChannelPromise promise) {
+        // 参数1：msg
+        // 参数2：size,数据量大小
+        // 参数3：total(msg) == size
+        // 参数4：promise
+        // 获取到一个包装当前　msg 数据的 entry 对象
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);
+
+        // 将包装当前msg数据的 entry对象 加入到 entry 链表中，表示数据入站到 出站缓冲区。
+
         if (tailEntry == null) {
             flushedEntry = null;
         } else {
@@ -165,8 +178,12 @@ public final class ChannelOutboundBuffer {
             unflushedEntry = entry;
         }
 
+
         // increment pending bytes after adding message to the unflushed arrays.
         // See https://github.com/netty/netty/issues/1619
+        // 累加出站缓冲区 总大小
+        // 参数1：当前 entry 的 pendingSize
+        // 参数2：false
         incrementPendingOutboundBytes(entry.pendingSize, false);
     }
 
@@ -208,12 +225,18 @@ public final class ChannelOutboundBuffer {
         incrementPendingOutboundBytes(size, true);
     }
 
+    // 累加出站缓冲区 总大小
+    // 参数1：当前 entry 的 pendingSize
+    // 参数2：false
     private void incrementPendingOutboundBytes(long size, boolean invokeLater) {
         if (size == 0) {
             return;
         }
 
+        // CAS 更新 totalPendingSize 字段 ，将 size 累加进去
         long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
+
+        // 如果累加完之后值，大于出站缓冲区的高水位，则设置 unwritable 字段 表示 不可写，并且向channel pipeline 发起 unwritable 更改事件
         if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
             setUnwritable(invokeLater);
         }
@@ -846,24 +869,53 @@ public final class ChannelOutboundBuffer {
             }
         });
 
+        // 归还entry到ObjectPool 使用的句柄
         private final Handle<Entry> handle;
+        // 组装成链表使用的字段，指向下一个entry节点
         Entry next;
+        // 业务层面的数据，一般msg都是 ByteBuf 对象
         Object msg;
+        // 当unsafe调用 出站缓冲区 nioBuffers 方法时，被涉及到的 entry 都会将 它的msg 转换成 ByteBuffer ，这里 缓存 结果使用
         ByteBuffer[] bufs;
         ByteBuffer buf;
+
+        // 业务层面 关注 msg 写结果时 提交的 promise.
         ChannelPromise promise;
+
+        // 进度
         long progress;
+        // msg byteBuf 有效数据量大小。
         long total;
+        // byteBuf 有效数据量大小 + 96 (16 + 6*8 + 16 + 8 + 1) => 89 因为 必须是 2的次方数 => 96
+        // Assuming a 64-bit JVM:
+        //  - 16 bytes object header
+        //  - 6 reference fields
+        //  - 2 long fields
+        //  - 2 int fields
+        //  - 1 boolean field
+        //  - padding
         int pendingSize;
+
+        // 当前msg byteBuf 底层由多少 ByteBuffer 组成，一般都是1 ，特殊情况是 CompositeByteBuf 底层可以由多个ByteBuf 组成。
         int count = -1;
+
+        // 当前entry是否取消 刷新 到socket。默认是 false.
         boolean cancelled;
 
         private Entry(Handle<Entry> handle) {
             this.handle = handle;
         }
 
+        // 参数1：msg
+        // 参数2：size,数据量大小
+        // 参数3：total(msg) == size
+        // 参数4：promise
+        // 返回一个entry对象，并且entry 对象包装着 msg 等 数据。
         static Entry newInstance(Object msg, int size, long total, ChannelPromise promise) {
+            // 从对象池 获取一个空闲的 entry 对象，如果对象池内没有 空闲的 entry，则new ，否则 使用空闲的entry
             Entry entry = RECYCLER.get();
+
+            // 赋值操作...
             entry.msg = msg;
             entry.pendingSize = size + CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD;
             entry.total = total;

@@ -378,10 +378,14 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         }
     }
 
+    // 参数：当前ch的出站缓冲区
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+        // 获取当前Netty ch 包装的 JDK 层面的 Channel 对象
         SocketChannel ch = javaChannel();
+        // 获取 自旋次数:16，表示下面的 do...while 循环最多执行16次。
         int writeSpinCount = config().getWriteSpinCount();
+
         do {
             if (in.isEmpty()) {
                 // All written so clear OP_WRITE

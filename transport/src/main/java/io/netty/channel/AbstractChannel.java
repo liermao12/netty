@@ -973,7 +973,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 预准备刷新工作
+            // 将 flushedEntry 指向第一个需要刷新的 entry 节点
+            // 计算出 flushedEntry --> tailEntry 总共有多少 entry 需要被刷新 ， 值记录在 flushed 字段内。
             outboundBuffer.addFlush();
+
+            // 真正刷新工作。
             flush0();
         }
 
@@ -989,6 +994,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 表示当前channel真正执行刷新工作
             inFlush0 = true;
 
             // Mark all pending write requests as failure if the channel is inactive.
@@ -1010,6 +1016,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // 正常逻辑，执行到这里。
+                // 参数：当前ch的出站缓冲区
                 doWrite(outboundBuffer);
             } catch (Throwable t) {
                 handleWriteError(t);
