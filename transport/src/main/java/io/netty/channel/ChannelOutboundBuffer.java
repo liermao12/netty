@@ -395,10 +395,14 @@ public final class ChannelOutboundBuffer {
     /**
      * Removes the fully written entries and update the reader index of the partially written entry.
      * This operation assumes all messages in this buffer is {@link ByteBuf}.
+     * 参数 writtenBytes: 可能是一条buffer的大小，也可能表示多条 buffer的大小.. 或者部分大小...
      */
     public void removeBytes(long writtenBytes) {
+
         for (;;) {
+            // 获取flushedEntry节点 指向的 entry.msg 数据
             Object msg = current();
+
             if (!(msg instanceof ByteBuf)) {
                 assert writtenBytes == 0;
                 break;
@@ -406,8 +410,10 @@ public final class ChannelOutboundBuffer {
 
             final ByteBuf buf = (ByteBuf) msg;
             final int readerIndex = buf.readerIndex();
+            // 计算出 msg 可读数据量大小..
             final int readableBytes = buf.writerIndex() - readerIndex;
 
+            // 条件如果成立：说明 unsafe 写入到 socket 底层缓冲区的 数据量 > flushedEntry.msg 可读数据量大小，if内的逻辑 就是移除 flushedEntry 代表的entry
             if (readableBytes <= writtenBytes) {
                 if (writtenBytes != 0) {
                     progress(readableBytes);
@@ -463,21 +469,44 @@ public final class ChannelOutboundBuffer {
      *                 value maybe exceeded because we make a best effort to include at least 1 {@link ByteBuffer}
      *                 in the return value to ensure write progress is made.
      */
+    // 将 出站缓冲区内的 部分 Entry.msg 转换成 JDK Channel 依赖的标准对象 ByteBuffer ，注意 这里返回的是 ByteBuffer 数组。
+    // 参数1： 1024 ， 最多转换出来 1024 个ByteBuffer对象
+    // 参数2： nioBuffers 方法最多转换 maxBytes 个字节的 ByteBuf 对象。
     public ByteBuffer[] nioBuffers(int maxCount, long maxBytes) {
         assert maxCount > 0;
         assert maxBytes > 0;
+        // 本次nioBuffers 方法调用 一共转换了多少 容量的buffer
         long nioBufferSize = 0;
+        // 本次nioBuffers 方法调用 一共将byteBuf 转换成 多少 ByteBuffer 对象
         int nioBufferCount = 0;
+
+        // 可以简单的认为 是与当前线程 绑定关系的 一个 map 对象。
         final InternalThreadLocalMap threadLocalMap = InternalThreadLocalMap.get();
+
+        // 这里会给每个线程 分配一个 长度为 1024 的 byteBuffer 数组，避免每个线程 每次调用 nioBuffers 方法时 都创建 byteBuffer 数组，提升了程序性能。
         ByteBuffer[] nioBuffers = NIO_BUFFERS.get(threadLocalMap);
+
+
+        // 循环处理开始节点  flushedEntry
         Entry entry = flushedEntry;
+
+        // 循环条件：当前节点 不是 null 并且 当前节点 不是 unflushedEntry 指向的节点。 => 1.循环到末尾 2.循环到 unflushedEntry
         while (isFlushedEntry(entry) && entry.msg instanceof ByteBuf) {
+
+            // 条件成立：说明当前entry节点 非 取消状态，所以需要提取它的数据。
             if (!entry.cancelled) {
+
                 ByteBuf buf = (ByteBuf) entry.msg;
+
                 final int readerIndex = buf.readerIndex();
+                // 有效数据量
                 final int readableBytes = buf.writerIndex() - readerIndex;
 
+                // 条件成立：说明 msg 包含待发送数据...
                 if (readableBytes > 0) {
+
+                    // 条件1：maxBytes - readableBytes < nioBufferSize => maxBytes < nioBufferSize + readableBytes
+                    // => nioBufferSize + readableBytes > maxBytes => 已转换buffer容量大小 + 本次可转换大小 > 最大限制，则跳出 while 循环
                     if (maxBytes - readableBytes < nioBufferSize && nioBufferCount != 0) {
                         // If the nioBufferSize + readableBytes will overflow maxBytes, and there is at least one entry
                         // we stop populate the ByteBuffer array. This is done for 2 reasons:
@@ -492,24 +521,47 @@ public final class ChannelOutboundBuffer {
                         // - https://linux.die.net//man/2/writev
                         break;
                     }
+
+                    // 正常逻辑...
+
+                    // 更新总转换量: 原值 + 本条msg 可读大小
                     nioBufferSize += readableBytes;
+
+                    // 默认值 count 是 -1
                     int count = entry.count;
+
+                    // 大概率 条件成立..
                     if (count == -1) {
                         //noinspection ConstantValueVariableUse
+                        // 获取出byteBuf底层到底是由多少 byteBuffer 构成的，在这里 msg 都是 direct byteBuf。
+                        // 正常情况下，计算出来的count是1，特殊情况是 CompositeByteBuf .
                         entry.count = count = buf.nioBufferCount();
                     }
+
+                    // 计算出 需要多大的 byteBuffer 数组...
                     int neededSpace = min(maxCount, nioBufferCount + count);
+
+                    // 如果需要的 数组大小 > 默认值 1024 的话，执行扩容逻辑...
                     if (neededSpace > nioBuffers.length) {
                         nioBuffers = expandNioBufferArray(nioBuffers, neededSpace, nioBufferCount);
                         NIO_BUFFERS.set(threadLocalMap, nioBuffers);
                     }
+
+                    // 正常情况：条件成立.
                     if (count == 1) {
+
                         ByteBuffer nioBuf = entry.buf;
+                        // 条件一般会成立...
                         if (nioBuf == null) {
                             // cache ByteBuffer as it may need to create a new ByteBuffer instance if its a
                             // derived buffer
+                            // 获取byteBuf底层真正的内存对象 byteBuffer
+                            // 参数1：读索引
+                            // 参数2：可读数据量容量
                             entry.buf = nioBuf = buf.internalNioBuffer(readerIndex, readableBytes);
                         }
+
+                        // 将刚刚转换出来的 byteBuffer 对象 加入到数组..
                         nioBuffers[nioBufferCount++] = nioBuf;
                     } else {
                         // The code exists in an extra method to ensure the method is not too big to inline as this
@@ -523,9 +575,13 @@ public final class ChannelOutboundBuffer {
             }
             entry = entry.next;
         }
+
+        //出站缓冲区记录 有多少 byteBuffer 待出站
+        //出站缓冲区记录 有多少字节 byteBuffer 待出站...
         this.nioBufferCount = nioBufferCount;
         this.nioBufferSize = nioBufferSize;
 
+        // 返回从entry链表中提取的 buffer 数组。
         return nioBuffers;
     }
 
