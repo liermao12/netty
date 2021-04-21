@@ -943,6 +943,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // 如果 ByteBuf 类型是 heap 类型的话，这里会将 它转换为 direct 类型。
                 msg = filterOutboundMessage(msg);
 
+                // 获取当前消息 有效数据量大小
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;
@@ -956,6 +957,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 将ByteBuf数据 加入到 出站缓冲区内。
+            // 参数1：msg  ByteBuf对象，并且这个ByteBuf管理的内存 归属 是 direct
+            // 参数2：size 数据量大小
+            // 参数3：promise，业务如果关注 本次 写操作是否成功 或者 失败，可以手动提交一个 跟 msg 相关的 promise, promise 内可以注册一些监听者，用于处理结果。
             outboundBuffer.addMessage(msg, size, promise);
         }
 
