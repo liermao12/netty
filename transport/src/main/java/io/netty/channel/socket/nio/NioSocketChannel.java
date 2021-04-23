@@ -469,6 +469,13 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             }
         } while (writeSpinCount > 0);
 
+        // 什么时候执行到这里？
+        // do...while 循环了 16次，仍然没能把 出站缓冲区 待发送的数据处理完...
+        // 看代码 得知，incompleteWrite 提交了一个 flushTask, flushTask最终 会调用 doWrite()，注意 调用doWrite 之前并没有 addFlush...
+        // 避免 多路复用器 其它 ch 饥饿... 让NioEventLoop 线程接下来去处理其它 ch 上的事件... 回过头 处理完 IO 后，再处理 NioEventLoop 本地任务队列内的
+        // 任务，处理任务就会碰到 flushTask ,就有机会 继续完成 当前 ch 剩余的 待发送数据了....
+
+        // writeSpinCount < 0  => false
         incompleteWrite(writeSpinCount < 0);
     }
 
