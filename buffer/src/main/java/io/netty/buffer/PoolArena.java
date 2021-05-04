@@ -72,11 +72,20 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
 
+    // 参数1：allocator 对象
+    // 参数2：pageSize,8k
+    // 参数3：maxOrder,11
+    // 参数4: pageShifts，13 ， 1 << 13 => pageSize
+    // 参数5：chunkSize,16mb
+    // 参数6：directMemoryCacheAlignment 0
     protected PoolArena(PooledByteBufAllocator parent, int pageSize,
           int pageShifts, int chunkSize, int cacheAlignment) {
         super(pageSize, pageShifts, chunkSize, cacheAlignment);
+        // 记录当前 arena 的爸爸是谁，arena归属的 alloctor 对象。
         this.parent = parent;
+        // 0
         directMemoryCacheAlignment = cacheAlignment;
+
         directMemoryCacheAlignmentMask = cacheAlignment - 1;
 
         numSmallSubpagePools = nSubpages;
@@ -590,8 +599,21 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
 
     static final class DirectArena extends PoolArena<ByteBuffer> {
 
+        // 参数1：allocator 对象
+        // 参数2：pageSize,8k
+        // 参数3：maxOrder,11
+        // 参数4: pageShifts，13 ， 1 << 13 => pageSize
+        // 参数5：chunkSize,16mb
+        // 参数6：directMemoryCacheAlignment 0
         DirectArena(PooledByteBufAllocator parent, int pageSize, int pageShifts,
                     int chunkSize, int directMemoryCacheAlignment) {
+
+            // 参数1：allocator 对象
+            // 参数2：pageSize,8k
+            // 参数3：maxOrder,11
+            // 参数4: pageShifts，13 ， 1 << 13 => pageSize
+            // 参数5：chunkSize,16mb
+            // 参数6：directMemoryCacheAlignment 0
             super(parent, pageSize, pageShifts, chunkSize,
                   directMemoryCacheAlignment);
         }

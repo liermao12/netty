@@ -96,8 +96,11 @@ abstract class SizeClasses implements SizeClassesMetric {
     private static final byte no = 0, yes = 1;
 
     protected SizeClasses(int pageSize, int pageShifts, int chunkSize, int directMemoryCacheAlignment) {
+        // 8k
         this.pageSize = pageSize;
+        // 13
         this.pageShifts = pageShifts;
+        // 16mb
         this.chunkSize = chunkSize;
         this.directMemoryCacheAlignment = directMemoryCacheAlignment;
 
