@@ -328,16 +328,20 @@ public final class ChannelOutboundBuffer {
         ChannelPromise promise = e.promise;
         int size = e.pendingSize;
 
+        // 一般是 移动 flushedEntry 指向当前 e 的下一个节点 ， 并且更新 flushed 字段。
         removeEntry(e);
 
         if (!e.cancelled) {
             // only release message, notify and decrement if it was not canceled before.
+            // byteBuf 实现了 引用计数，这里 safeRelease 更新引用记数，最终可能会触发 byteBuf 归还内存的逻辑...
             ReferenceCountUtil.safeRelease(msg);
             safeSuccess(promise);
+            // 原子减少 出站缓冲区 总容量 , 减去 移除的 entry.pendingSize
             decrementPendingOutboundBytes(size, false, true);
         }
 
         // recycle the entry
+        // 归还当前 entry 对象 到对象池
         e.recycle();
 
         return true;
@@ -419,8 +423,11 @@ public final class ChannelOutboundBuffer {
                     progress(readableBytes);
                     writtenBytes -= readableBytes;
                 }
+                // 移除当前entry
                 remove();
-            } else { // readableBytes > writtenBytes
+            }
+            // 执行到else 说明 unsafe 真正写入到 socket 的数据量 < 当前 flushedEntry.msg 可读数据量的。
+            else { // readableBytes > writtenBytes
                 if (writtenBytes != 0) {
                     buf.readerIndex(readerIndex + (int) writtenBytes);
                     progress(writtenBytes);
@@ -428,6 +435,7 @@ public final class ChannelOutboundBuffer {
                 break;
             }
         }
+
         clearNioBuffers();
     }
 
